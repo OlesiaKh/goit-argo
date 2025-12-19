@@ -116,14 +116,6 @@ kubectl -n infra-tools get secret argocd-initial-admin-secret \
 Логін:
 admin
 
---------------------------------------------------
-6. Доступ до nginx
---------------------------------------------------
-
-kubectl port-forward svc/nginx -n application 8081:80
-
-Відкрити у браузері:
-http://localhost:8081
 
 --------------------------------------------------
 7. Доступ до MLflow
