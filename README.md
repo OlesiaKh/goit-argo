@@ -1,64 +1,37 @@
-# goit-argo
-Lesson 7 – GitOps with ArgoCD and Helm (MLflow)
+Цей проєкт демонструє розгортання ArgoCD у Kubernetes кластері (AWS EKS) за допомогою Terraform та використання GitOps-підходу для автоматичного деплою застосунків з Git-репозиторію.
 
-Мета цього завдання — реалізувати GitOps-підхід у Kubernetes за допомогою ArgoCD. У межах роботи ArgoCD було розгорнуто в існуючому кластері AWS EKS через Terraform як Helm-реліз. Далі створено окремий Git-репозиторій з описом деплою застосунку (MLflow / test application), який ArgoCD автоматично підхоплює та синхронізує з кластером.
+У рамках завдання:
+- ArgoCD розгорнуто в EKS як Helm release через Terraform
+- Створено окремий Git-репозиторій з Kubernetes-маніфестами
+- Налаштовано ArgoCD Applications для nginx та MLflow
+- Після git push ArgoCD автоматично синхронізує стан кластера з Git
 
-========================
+--------------------------------------------------
 1. Розгортання ArgoCD через Terraform
-========================
+--------------------------------------------------
 
-ArgoCD розгортається у namespace infra-tools як Helm release за допомогою Terraform. Усі значення Helm-чарту винесені в окремий файл argocd-values.yaml.
-
-Структура Terraform-проєкту:
+Terraform-код для розгортання ArgoCD знаходиться в окремому проєкті:
 terraform/argocd
-├── main.tf
-├── provider.tf
-├── variables.tf
-├── outputs.tf
-├── backend.tf
-├── terraform.tf
-└── values
-    └── argocd-values.yaml
+
+ArgoCD встановлюється як helm_release у namespace infra-tools.
+Усі значення Helm-чарту винесені у файл values/argocd-values.yaml.
 
 Запуск Terraform:
 
-cd terraform/argocd
 terraform init
 terraform apply
 
-Перевірка, що ArgoCD успішно запущений:
+Перевірка, що ArgoCD pod-и запущені:
 
 kubectl get pods -n infra-tools
 
 У namespace infra-tools мають бути pod-и з префіксом argocd-.
 
-========================
-2. Доступ до ArgoCD UI
-========================
+--------------------------------------------------
+2. Git-репозиторій з маніфестами
+--------------------------------------------------
 
-Для доступу до веб-інтерфейсу ArgoCD використовується port-forward (команда блокує термінал, тому виконується в окремій вкладці):
-
-kubectl port-forward svc/argocd-server -n infra-tools 8080:443
-
-Після цього ArgoCD UI доступний за адресою:
-
-https://localhost:8080
-
-Логін: admin
-
-Отримання початкового пароля:
-
-kubectl get secret argocd-initial-admin-secret -n infra-tools -o jsonpath="{.data.password}" | base64 --decode
-
-========================
-3. Git-репозиторій для GitOps
-========================
-
-Створено окремий Git-репозиторій для GitOps-деплою:
-
-https://github.com/OlesiaKh/goit-argo
-
-Усі зміни виконуються в гілці lesson-7.
+Цей репозиторій містить Kubernetes-маніфести та ArgoCD Applications.
 
 Структура репозиторію:
 
@@ -70,65 +43,112 @@ goit-argo
 │   └── infra-tools
 │       └── ns.yaml
 ├── application.yaml
-└── README.md
+├── mlflow-application.yaml
+├── README.md
+└── argocdapplications.png
 
-У репозиторії описані:
-- namespace-и
-- маніфести застосунку
-- ArgoCD Application
+--------------------------------------------------
+3. ArgoCD Application: nginx
+--------------------------------------------------
 
-========================
-4. ArgoCD Application (Helm / Git)
-========================
+Файл application.yaml описує ArgoCD Application для nginx.
 
-У файлі application.yaml описано ArgoCD Application, який:
+- Джерело: GitHub репозиторій
+- Path: namespaces/application
+- Namespace: application
+- Увімкнено auto-sync, prune та self-heal
+- Namespace створюється автоматично (CreateNamespace=true)
 
-- використовує Git-репозиторій як джерело
-- автоматично синхронізується (auto-sync)
-- має self-heal
-- автоматично створює namespace
-- деплоїть застосунок у namespace application
-
-Застосування Application у кластері:
+Застосування Application у кластер:
 
 kubectl apply -f application.yaml
 
-Перевірка статусу Application:
+Перевірка:
 
 kubectl get applications -n infra-tools
-
-Очікуваний статус: Synced, Healthy.
-
-========================
-5. Автоматичний деплой застосунку (MLflow / test app)
-========================
-
-Після git push ArgoCD автоматично:
-
-- підхоплює зміни з Git
-- створює Deployment, Service та Pod-и
-- підтримує стан кластера відповідно до Git (GitOps)
-
-Перевірка pod-ів:
-
 kubectl get pods -n application
 
-Перевірка сервісів:
+--------------------------------------------------
+4. ArgoCD Application: MLflow (Helm)
+--------------------------------------------------
 
+MLflow розгортається як Helm-чарт через ArgoCD Application.
+Опис знаходиться у файлі mlflow-application.yaml.
+
+Основні параметри:
+- repoURL: https://community-charts.github.io/helm-charts
+- chart: mlflow
+- targetRevision: 0.7.19
+- namespace: application
+- auto-sync та self-heal увімкнені
+- Namespace створюється автоматично
+
+Застосування MLflow Application:
+
+kubectl apply -f mlflow-application.yaml
+
+Перевірка:
+
+kubectl get applications -n infra-tools
+kubectl get pods -n application
 kubectl get svc -n application
 
-========================
-6. Доступ до сервісу
-========================
+Очікувані сервіси:
+- mlflow (порт 5000)
+- nginx (порт 80)
 
-Для доступу до сервісу використовується port-forward:
+--------------------------------------------------
+5. Доступ до ArgoCD UI
+--------------------------------------------------
+
+Port-forward для ArgoCD:
+
+kubectl port-forward svc/argocd-server -n infra-tools 8080:443
+
+Відкрити у браузері:
+https://localhost:8080
+
+Отримати пароль admin:
+
+kubectl -n infra-tools get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 --decode
+
+Логін:
+admin
+
+--------------------------------------------------
+6. Доступ до nginx
+--------------------------------------------------
 
 kubectl port-forward svc/nginx -n application 8081:80
 
-Після цього сервіс доступний у браузері:
-
+Відкрити у браузері:
 http://localhost:8081
 
-(Для MLflow доступ організовується аналогічно через відповідний Service.)
+--------------------------------------------------
+7. Доступ до MLflow
+--------------------------------------------------
 
-========================
+kubectl port-forward svc/mlflow -n application 5000:5000
+
+Відкрити у браузері:
+http://localhost:5000
+
+
+--------------------------------------------------
+--------------------------------------------------
+9. Перевірка результату
+--------------------------------------------------
+
+- ArgoCD UI показує Applications nginx та mlflow у стані Healthy / Synced
+- У namespace application створені pod-и та сервіси
+- Застосунки доступні через port-forward
+- Git є єдиним джерелом правди (GitOps)
+
+--------------------------------------------------
+10. Прибирання ресурсів
+--------------------------------------------------
+
+Після перевірки завдання необхідно видалити ресурси, щоб уникнути витрат:
+
+terraform destroy
